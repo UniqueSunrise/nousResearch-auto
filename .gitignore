@@ -1,0 +1,36 @@
+# Python artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build folders
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual Environments
+venv/
+env/
+ENV/
+
+# IDE/editor folders
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Sensitive files — исключаем из репо
+api_keys.txt
+proxies.txt
+
+# Environment files
+*.env

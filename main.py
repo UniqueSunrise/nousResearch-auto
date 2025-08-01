@@ -1,0 +1,265 @@
+import asyncio
+import random
+import time
+import sys
+import requests
+from config import *
+
+PROXY_FILE_PATH = "proxies.txt"
+
+
+def truncate_text(text: str, max_words: int = 6) -> str:
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    else:
+        return " ".join(words[:max_words]) + "..."
+
+
+def load_proxies(proxy_file):
+    try:
+        with open(proxy_file, "r", encoding="utf-8") as f:
+            proxies_list = [line.strip() for line in f if line.strip()]
+        if not proxies_list:
+            raise FileNotFoundError(f"Файл с прокси '{proxy_file}' пустой.")
+        return proxies_list
+    except FileNotFoundError:
+        raise
+    except Exception as e:
+        print(f"Ошибка при загрузке прокси: {e}")
+        sys.exit(1)
+
+
+def load_api_keys(api_keys_file):
+    try:
+        with open(api_keys_file, "r", encoding="utf-8") as f:
+            keys = [line.strip() for line in f if line.strip()]
+        if not keys:
+            raise FileNotFoundError(f"Файл '{api_keys_file}' пустой, ключи для API не найдены.")
+        return keys
+    except FileNotFoundError:
+        raise
+    except Exception as e:
+        print(f"Ошибка при загрузке ключей из файла {api_keys_file}: {e}")
+        sys.exit(1)
+
+
+def query_nous_api(api_key: str, prompt: str, model: str, proxy: str = None):
+    url = "https://inference-api.nousresearch.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": max_tokens,
+        "stream": False
+    }
+
+    proxies = None
+    if useProxy and proxy:
+        if not proxy.startswith("http://") and not proxy.startswith("https://"):
+            proxy = "http://" + proxy
+        proxies = {
+            "http": proxy,
+            "https": proxy
+        }
+
+    response = requests.post(url, headers=headers, json=payload, proxies=proxies)
+    response.raise_for_status()
+    data = response.json()
+    return data['choices'][0]['message']['content']
+
+
+async def query_gpt(prompt: str) -> str:
+    await asyncio.sleep(1)  # эмуляция задержки
+    return "Ответ GPT на запрос: " + prompt
+
+
+async def query_perplexity(prompt: str) -> str:
+    await asyncio.sleep(1)  # эмуляция задержки
+    return "Ответ Perplexity на запрос: " + prompt
+
+
+async def async_query_nous(api_key: str, prompt: str, model: str, proxy: str = None):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, query_nous_api, api_key, prompt, model, proxy)
+
+
+async def send_request(account_key, prompt_to_send, account_index, total_accounts, model, proxy=None):
+    print(f"[{account_index}/{total_accounts}] Активность аккаунта №{account_index} — выполняется запрос к модели {model}.")
+    try:
+        response = await async_query_nous(account_key, prompt_to_send, model, proxy)
+    except Exception as e:
+        response = f"Ошибка при запросе: {e}"
+    print(f"[{account_index}/{total_accounts}] Промпт: {truncate_text(prompt_to_send)}")
+    print(f"[{account_index}/{total_accounts}] Ответ: {truncate_text(response)}")
+
+
+async def worker(account_key, prompt, account_index, total_accounts,
+                 nous_min_requests, nous_max_requests, sleep_between_requests_range,
+                 models_list, proxy=None):
+    num_requests = random.randint(nous_min_requests, nous_max_requests)
+    proxy_info = f" с прокси {proxy}" if proxy else ""
+    print(f"[INFO] Аккаунт №{account_index} будет делать {num_requests} запросов{proxy_info}.")
+
+    for req_num in range(1, num_requests + 1):
+        selected_model = random.choice(models_list)
+
+        if use_different_ai == 1:  # Perplexity
+            ai_prompt = "make ai query on some interesting topic"
+            ai_response = await query_perplexity(ai_prompt)
+            prompt_to_nous = ai_response
+        elif use_different_ai == 2:  # GPT
+            ai_prompt = "make ai query on some interesting topic"
+            ai_response = await query_gpt(ai_prompt)
+            prompt_to_nous = ai_response
+        else:
+            prompt_to_nous = prompt
+
+        print(f"[{account_index}/{total_accounts}] Аккаунт №{account_index} — Запрос {req_num}/{num_requests} (запрос к {selected_model})")
+        await send_request(account_key, prompt_to_nous, account_index, total_accounts, selected_model, proxy)
+
+        if req_num < num_requests:
+            sleep_min = sleep_between_requests_range[0] if (isinstance(sleep_between_requests_range, (list, tuple)) and len(sleep_between_requests_range) == 2) else 10
+            sleep_max = sleep_between_requests_range[1] if (isinstance(sleep_between_requests_range, (list, tuple)) and len(sleep_between_requests_range) == 2) else 50
+            sleep_duration = random.uniform(sleep_min, sleep_max)
+            print(f"[{account_index}/{total_accounts}] Спим {sleep_duration:.2f} секунд перед следующим запросом аккаунта.")
+            await asyncio.sleep(sleep_duration)
+
+
+async def main_async():
+    if useProxy:
+        try:
+            proxies = load_proxies(PROXY_FILE_PATH)
+        except FileNotFoundError:
+            print(f"Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' не найден или пустой. Завершаем работу.")
+            sys.exit(1)
+    else:
+        proxies = []
+
+    try:
+        keys = load_api_keys("api_keys.txt")
+    except FileNotFoundError:
+        print("Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. Завершаем работу.")
+        sys.exit(1)
+
+    if shuffle_wallet:
+        random.shuffle(keys)
+
+    try:
+        with open('default_prompts_to_nous.txt', 'r', encoding='utf-8') as f:
+            prompts = [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        print(f"Ошибка при загрузке файлов с промптами: {e}")
+        sys.exit(1)
+
+    total_keys = len(keys)
+
+    for start_idx in range(0, total_keys, wallets_in_work):
+        end_idx = min(start_idx + wallets_in_work, total_keys)
+        batch = keys[start_idx:end_idx]
+
+        tasks = []
+        for i, key in enumerate(batch, start=start_idx + 1):
+            if use_different_ai == 0:
+                prompt = random.choice(prompts)
+            else:
+                prompt = None
+
+            proxy_for_account = proxies[i - 1] if useProxy and len(proxies) >= i else None
+
+            tasks.append(worker(
+                key, prompt, i, total_keys,
+                nous_requests_per_account_min,
+                nous_requests_per_account_max,
+                sleep_between_requests,
+                nous_models,
+                proxy_for_account
+            ))
+
+        await asyncio.gather(*tasks)
+
+        for i in range(len(batch) - 1):
+            acc_num = start_idx + i + 1
+            sleep_time = sleep_between_work * i
+            print(f"[{acc_num}/{total_keys}] Спим {sleep_time} сек перед работой аккаунта №{acc_num + 1}")
+            await asyncio.sleep(sleep_time)
+
+    print("\n=== Все задачи в асинхронном режиме выполнены ===\n")
+
+
+def main_sync():
+    if useProxy:
+        try:
+            proxies = load_proxies(PROXY_FILE_PATH)
+        except FileNotFoundError:
+            print(f"Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' не найден или пустой. Завершаем работу.")
+            sys.exit(1)
+    else:
+        proxies = []
+
+    try:
+        keys = load_api_keys("api_keys.txt")
+    except FileNotFoundError:
+        print("Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. Завершаем работу.")
+        sys.exit(1)
+
+    if shuffle_wallet:
+        random.shuffle(keys)
+
+    try:
+        with open("default_prompts_to_nous.txt", "r", encoding="utf-8") as f:
+            prompts = [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        print(f"Ошибка при загрузке файлов с промптами: {e}")
+        sys.exit(1)
+
+    total_keys = len(keys)
+
+    for idx, key in enumerate(keys, start=1):
+        proxy_for_account = proxies[idx - 1] if useProxy and len(proxies) >= idx else None
+
+        if use_different_ai == 0:
+            prompt = random.choice(prompts)
+            num_requests = random.randint(nous_requests_per_account_min, nous_requests_per_account_max)
+            proxy_info = f" с прокси {proxy_for_account}" if proxy_for_account else ""
+            print(f"[INFO] Аккаунт №{idx} будет делать {num_requests} запросов{proxy_info}.")
+
+            for req_num in range(1, num_requests + 1):
+                selected_model = random.choice(nous_models)
+                print(f"[{idx}/{total_keys}] Аккаунт №{idx} — Запрос {req_num}/{num_requests} (запрос к {selected_model})")
+                try:
+                    response = query_nous_api(key, prompt, selected_model, proxy=proxy_for_account)
+                except Exception as e:
+                    response = f"Ошибка: {e}"
+
+                print(f"[{idx}/{total_keys}] Промпт: {truncate_text(prompt)}")
+                print(f"[{idx}/{total_keys}] Ответ: {truncate_text(response)}")
+
+                if req_num < num_requests:
+                    sleep_min = sleep_between_requests[0] if (isinstance(sleep_between_requests, (list, tuple)) and len(sleep_between_requests) == 2) else 10
+                    sleep_max = sleep_between_requests[1] if (isinstance(sleep_between_requests, (list, tuple)) and len(sleep_between_requests) == 2) else 50
+                    sleep_duration = random.uniform(sleep_min, sleep_max)
+                    print(f"[{idx}/{total_keys}] Спим {sleep_duration:.2f} секунд перед следующим запросом")
+                    time.sleep(sleep_duration)
+        else:
+            print(f"Синхронный режим не поддерживает use_different_ai != 0. use_different_ai={use_different_ai}")
+            break
+
+        sleep_time = sleep_between_work * ((idx - 1) % wallets_in_work)
+        print(f"[{idx}/{total_keys}] Спим {sleep_time} секунд перед следующим аккаунтом")
+        time.sleep(sleep_time)
+
+    print("\n=== Работа завершена ===\n")
+
+
+if __name__ == "__main__":
+    if async_sync_work == 1:
+        asyncio.run(main_async())
+    else:
+        main_sync()
