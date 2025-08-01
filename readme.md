@@ -21,7 +21,7 @@
 - Поддерживать интеграции с Perplexity и GPT
 
 ## Фандрейз и поддержка
-По данным Cryptorank, проект активно собрал 2 раунда:
+По данным Cryptorank, проект собрал 2 раунда:
 
 > Series A 25 Apr 2025 -- $ 50.00M with 1 billion valuation (Paradigm)
 
