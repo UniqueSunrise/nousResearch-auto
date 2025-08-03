@@ -130,20 +130,30 @@ async def worker(account_key, prompts_list, account_index, total_accounts,
     for req_num in range(1, num_requests + 1):
         selected_model = random.choice(models_list)
 
+        # Выбираем system prompt согласно модели
+        system_prompt = SYSTEM_PROMPTS.get(selected_model, next(iter(SYSTEM_PROMPTS.values())))
+
         if use_different_ai == 1:  # Perplexity
             ai_prompt = "make ai query on some interesting topic"
             ai_response = await query_perplexity(ai_prompt)
             prompt_to_nous = ai_response
+            # system_prompt = None  # Perplexity не использует system prompt в этой реализации
         elif use_different_ai == 2:  # GPT
             ai_prompt = "make ai query on some interesting topic"
             ai_response = await query_gpt(ai_prompt)
             prompt_to_nous = ai_response
+            # system_prompt = None  # GPT не использует system prompt в этой реализации
         else:
             prompt_to_nous = random.choice(prompts_list)
 
         print(f"{Fore.GREEN}[{account_index}/{total_accounts}]{Style.RESET_ALL} Аккаунт №{account_index} — Запрос "
               f"{Fore.CYAN}{req_num}/{num_requests}{Style.RESET_ALL} (запрос к {Fore.LIGHTCYAN_EX}{selected_model}{Style.RESET_ALL})")
-        await send_request(account_key, SYSTEM_PROMPT, prompt_to_nous, account_index, total_accounts, selected_model, proxy)
+        # Для Perplexity/GPT system_prompt не передаем
+        if use_different_ai in [1, 2]:
+            # Если такие модели, отправим только user prompt
+            await send_request(account_key, "", prompt_to_nous, account_index, total_accounts, selected_model, proxy)
+        else:
+            await send_request(account_key, system_prompt, prompt_to_nous, account_index, total_accounts, selected_model, proxy)
 
         if req_num < num_requests:
             if isinstance(sleep_between_requests_range, (list, tuple)) and len(sleep_between_requests_range) == 2:
@@ -283,8 +293,12 @@ def main_sync():
                       f"{Fore.LIGHTCYAN_EX}{selected_model}{Style.RESET_ALL})")
                 try:
                     response = query_nous_api(
-                        key, SYSTEM_PROMPT, prompt, selected_model,
-                        proxy=proxy_for_account, max_tokens_val=max_tokens
+                        key,
+                        SYSTEM_PROMPTS.get(selected_model, next(iter(SYSTEM_PROMPTS.values()))),
+                        prompt,
+                        selected_model,
+                        proxy=proxy_for_account,
+                        max_tokens_val=max_tokens
                     )
                 except Exception as e:
                     response = f"{Fore.RED}Ошибка: {e}{Style.RESET_ALL}"
