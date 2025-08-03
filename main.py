@@ -5,6 +5,9 @@ import sys
 import requests
 from config import *
 
+from colorama import init, Fore, Style
+init(autoreset=True)
+
 PROXY_FILE_PATH = "proxies.txt"
 
 
@@ -26,7 +29,7 @@ def load_proxies(proxy_file):
     except FileNotFoundError:
         raise
     except Exception as e:
-        print(f"Ошибка при загрузке прокси: {e}")
+        print(f"{Fore.RED}Ошибка при загрузке прокси: {e}{Style.RESET_ALL}")
         sys.exit(1)
 
 
@@ -40,7 +43,7 @@ def load_api_keys(api_keys_file):
     except FileNotFoundError:
         raise
     except Exception as e:
-        print(f"Ошибка при загрузке ключей из файла {api_keys_file}: {e}")
+        print(f"{Fore.RED}Ошибка при загрузке ключей из файла {api_keys_file}: {e}{Style.RESET_ALL}")
         sys.exit(1)
 
 
@@ -91,21 +94,21 @@ async def async_query_nous(api_key: str, prompt: str, model: str, proxy: str = N
 
 
 async def send_request(account_key, prompt_to_send, account_index, total_accounts, model, proxy=None):
-    print(f"[{account_index}/{total_accounts}] Активность аккаунта №{account_index} — выполняется запрос к модели {model}.")
+    print(f"{Fore.GREEN}[{account_index}/{total_accounts}] Активность аккаунта №{account_index} — выполняется запрос к модели {Fore.CYAN}{model}{Style.RESET_ALL}.")
     try:
         response = await async_query_nous(account_key, prompt_to_send, model, proxy)
     except Exception as e:
-        response = f"Ошибка при запросе: {e}"
-    print(f"[{account_index}/{total_accounts}] Промпт: {truncate_text(prompt_to_send)}")
-    print(f"[{account_index}/{total_accounts}] Ответ: {truncate_text(response)}")
+        response = f"{Fore.RED}Ошибка при запросе: {e}{Style.RESET_ALL}"
+    print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Промпт: {Fore.MAGENTA}{truncate_text(prompt_to_send)}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Ответ: {Fore.LIGHTWHITE_EX}{truncate_text(response)}{Style.RESET_ALL}")
 
 
 async def worker(account_key, prompts_list, account_index, total_accounts,
                  nous_min_requests, nous_max_requests, sleep_between_requests_range,
                  models_list, proxy=None):
     num_requests = random.randint(nous_min_requests, nous_max_requests)
-    proxy_info = f" с прокси {proxy}" if proxy else ""
-    print(f"[INFO] Аккаунт №{account_index} (key start: {str(account_key)[:6]}) будет делать {num_requests} запросов{proxy_info}.")
+    proxy_info = f" с прокси {Fore.BLUE}{proxy}{Style.RESET_ALL}" if proxy else ""
+    print(f"{Fore.BLUE}[INFO]{Style.RESET_ALL} Аккаунт №{account_index} (key start: {Fore.LIGHTYELLOW_EX}{str(account_key)[:6]}{Style.RESET_ALL}) будет делать {Fore.LIGHTCYAN_EX}{num_requests}{Style.RESET_ALL} запросов{proxy_info}.")
 
     for req_num in range(1, num_requests + 1):
         selected_model = random.choice(models_list)
@@ -119,9 +122,9 @@ async def worker(account_key, prompts_list, account_index, total_accounts,
             ai_response = await query_gpt(ai_prompt)
             prompt_to_nous = ai_response
         else:
-            prompt_to_nous = random.choice(prompts_list)  # каждый запрос с новым случайным промптом
+            prompt_to_nous = random.choice(prompts_list)
 
-        print(f"[{account_index}/{total_accounts}] Аккаунт №{account_index} — Запрос {req_num}/{num_requests} (запрос к {selected_model})")
+        print(f"{Fore.GREEN}[{account_index}/{total_accounts}]{Style.RESET_ALL} Аккаунт №{account_index} — Запрос {Fore.CYAN}{req_num}/{num_requests}{Style.RESET_ALL} (запрос к {Fore.LIGHTCYAN_EX}{selected_model}{Style.RESET_ALL})")
         await send_request(account_key, prompt_to_nous, account_index, total_accounts, selected_model, proxy)
 
         if req_num < num_requests:
@@ -131,8 +134,9 @@ async def worker(account_key, prompts_list, account_index, total_accounts,
             else:
                 sleep_min = 10
                 sleep_max = 50
+
             sleep_duration = random.uniform(sleep_min, sleep_max)
-            print(f"[{account_index}/{total_accounts}] Спим {sleep_duration:.2f} секунд перед следующим запросом аккаунта.")
+            print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Спим {Fore.LIGHTCYAN_EX}{sleep_duration:.2f}{Style.RESET_ALL} секунд перед следующим запросом аккаунта.")
             await asyncio.sleep(sleep_duration)
 
 
@@ -147,7 +151,7 @@ async def main_async():
         try:
             proxies = load_proxies(PROXY_FILE_PATH)
         except FileNotFoundError:
-            print(f"Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' не найден или пустой. Завершаем работу.")
+            print(f"{Fore.RED}Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
             sys.exit(1)
     else:
         proxies = []
@@ -155,11 +159,10 @@ async def main_async():
     try:
         keys = load_api_keys("api_keys.txt")
     except FileNotFoundError:
-        print("Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. Завершаем работу.")
+        print(f"{Fore.RED}Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
         sys.exit(1)
 
     total_keys = len(keys)
-
     indices = list(range(total_keys))
     if shuffle_wallet:
         random.shuffle(indices)
@@ -168,7 +171,7 @@ async def main_async():
         with open('default_prompts_to_nous.txt', 'r', encoding='utf-8') as f:
             prompts = [line.strip() for line in f if line.strip()]
     except Exception as e:
-        print(f"Ошибка при загрузке файлов с промптами: {e}")
+        print(f"{Fore.RED}Ошибка при загрузке файлов с промптами: {e}{Style.RESET_ALL}")
         sys.exit(1)
 
     for start_idx in range(0, total_keys, wallets_in_work):
@@ -180,19 +183,15 @@ async def main_async():
             key = keys[original_idx]
             real_index = original_idx + 1  # 1-based индекс аккаунта
 
-            if use_different_ai == 0:
-                prompt_list_for_worker = prompts
-            else:
-                prompt_list_for_worker = None
-
+            prompt_list_for_worker = prompts if use_different_ai == 0 else None
             proxy_for_account = proxies[real_index - 1] if useProxy and len(proxies) >= real_index else None
 
             delay = pos_in_batch * sleep_between_work
 
             if delay == 0:
-                print(f"[{real_index}/{total_keys}] Запускаем аккаунт №{real_index} (key start: {str(key)[:6]}) без задержки")
+                print(f"{Fore.YELLOW}[{real_index}/{total_keys}] Запускаем аккаунт №{real_index} (key start: {Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL}) без задержки")
             else:
-                print(f"[{real_index}/{total_keys}] Спим {delay} сек перед запуском аккаунта №{real_index} (key start: {str(key)[:6]})")
+                print(f"{Fore.YELLOW}[{real_index}/{total_keys}] Спим {Fore.LIGHTCYAN_EX}{delay}{Style.RESET_ALL} сек перед запуском аккаунта №{real_index} (key start: {Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL})")
 
             task = asyncio.create_task(delayed_worker_start(
                 delay,
@@ -207,7 +206,7 @@ async def main_async():
 
         await asyncio.gather(*running_tasks)
 
-    print("\n=== Все задачи в асинхронном режиме выполнены ===\n")
+    print(f"{Fore.GREEN}\n=== Все задачи в асинхронном режиме выполнены ===\n{Style.RESET_ALL}")
 
 
 def main_sync():
@@ -215,7 +214,7 @@ def main_sync():
         try:
             proxies = load_proxies(PROXY_FILE_PATH)
         except FileNotFoundError:
-            print(f"Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' не найден или пустой. Завершаем работу.")
+            print(f"{Fore.RED}Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
             sys.exit(1)
     else:
         proxies = []
@@ -223,7 +222,7 @@ def main_sync():
     try:
         keys = load_api_keys("api_keys.txt")
     except FileNotFoundError:
-        print("Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. Завершаем работу.")
+        print(f"{Fore.RED}Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
         sys.exit(1)
 
     if shuffle_wallet:
@@ -236,7 +235,7 @@ def main_sync():
         with open("default_prompts_to_nous.txt", "r", encoding="utf-8") as f:
             prompts = [line.strip() for line in f if line.strip()]
     except Exception as e:
-        print(f"Ошибка при загрузке файлов с промптами: {e}")
+        print(f"{Fore.RED}Ошибка при загрузке файлов с промптами: {e}{Style.RESET_ALL}")
         sys.exit(1)
 
     total_keys = len(keys_shuffled)
@@ -248,18 +247,18 @@ def main_sync():
             prompt = random.choice(prompts)
             num_requests = random.randint(nous_requests_per_account_min, nous_requests_per_account_max)
             proxy_info = f" с прокси {proxy_for_account}" if proxy_for_account else ""
-            print(f"[INFO] Аккаунт №{idx} (key start: {str(key)[:6]}) будет делать {num_requests} запросов{proxy_info}.")
+            print(f"{Fore.BLUE}[INFO]{Style.RESET_ALL} Аккаунт №{idx} (key start: {Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL}) будет делать {Fore.LIGHTCYAN_EX}{num_requests}{Style.RESET_ALL} запросов{proxy_info}.")
 
             for req_num in range(1, num_requests + 1):
                 selected_model = random.choice(nous_models)
-                print(f"[{idx}/{total_keys}] Аккаунт №{idx} — Запрос {req_num}/{num_requests} (запрос к {selected_model})")
+                print(f"{Fore.GREEN}[{idx}/{total_keys}]{Style.RESET_ALL} Аккаунт №{idx} — Запрос {Fore.CYAN}{req_num}/{num_requests}{Style.RESET_ALL} (запрос к {Fore.LIGHTCYAN_EX}{selected_model}{Style.RESET_ALL})")
                 try:
                     response = query_nous_api(key, prompt, selected_model, proxy=proxy_for_account)
                 except Exception as e:
-                    response = f"Ошибка: {e}"
+                    response = f"{Fore.RED}Ошибка: {e}{Style.RESET_ALL}"
 
-                print(f"[{idx}/{total_keys}] Промпт: {truncate_text(prompt)}")
-                print(f"[{idx}/{total_keys}] Ответ: {truncate_text(response)}")
+                print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Промпт: {Fore.MAGENTA}{truncate_text(prompt)}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Ответ: {Fore.LIGHTWHITE_EX}{truncate_text(response)}{Style.RESET_ALL}")
 
                 if req_num < num_requests:
                     if isinstance(sleep_between_requests, (list, tuple)) and len(sleep_between_requests) == 2:
@@ -269,17 +268,17 @@ def main_sync():
                         sleep_min = 10
                         sleep_max = 50
                     sleep_duration = random.uniform(sleep_min, sleep_max)
-                    print(f"[{idx}/{total_keys}] Спим {sleep_duration:.2f} секунд перед следующим запросом")
+                    print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Спим {Fore.LIGHTCYAN_EX}{sleep_duration:.2f}{Style.RESET_ALL} секунд перед следующим запросом")
                     time.sleep(sleep_duration)
         else:
-            print(f"Синхронный режим не поддерживает use_different_ai != 0. use_different_ai={use_different_ai}")
+            print(f"{Fore.RED}Синхронный режим не поддерживает use_different_ai != 0. use_different_ai={use_different_ai}{Style.RESET_ALL}")
             break
 
         sleep_time = sleep_between_work * ((idx - 1) % wallets_in_work)
-        print(f"[{idx}/{total_keys}] Спим {sleep_time} секунд перед следующим аккаунтом")
+        print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Спим {sleep_time} секунд перед следующим аккаунтом")
         time.sleep(sleep_time)
 
-    print("\n=== Работа завершена ===\n")
+    print(f"{Fore.GREEN}\n=== Работа завершена ===\n{Style.RESET_ALL}")
 
 
 if __name__ == "__main__":
