@@ -76,12 +76,12 @@ def query_nous_api(api_key: str, prompt: str, model: str, proxy: str = None):
 
 
 async def query_gpt(prompt: str) -> str:
-    await asyncio.sleep(1)  # эмуляция задержки
+    await asyncio.sleep(1)
     return "Ответ GPT на запрос: " + prompt
 
 
 async def query_perplexity(prompt: str) -> str:
-    await asyncio.sleep(1)  # эмуляция задержки
+    await asyncio.sleep(1)
     return "Ответ Perplexity на запрос: " + prompt
 
 
@@ -105,7 +105,7 @@ async def worker(account_key, prompt, account_index, total_accounts,
                  models_list, proxy=None):
     num_requests = random.randint(nous_min_requests, nous_max_requests)
     proxy_info = f" с прокси {proxy}" if proxy else ""
-    print(f"[INFO] Аккаунт №{account_index} будет делать {num_requests} запросов{proxy_info}.")
+    print(f"[INFO] Аккаунт №{account_index} (key start: {str(account_key)[:6]}) будет делать {num_requests} запросов{proxy_info}.")
 
     for req_num in range(1, num_requests + 1):
         selected_model = random.choice(models_list)
@@ -125,11 +125,22 @@ async def worker(account_key, prompt, account_index, total_accounts,
         await send_request(account_key, prompt_to_nous, account_index, total_accounts, selected_model, proxy)
 
         if req_num < num_requests:
-            sleep_min = sleep_between_requests_range[0] if (isinstance(sleep_between_requests_range, (list, tuple)) and len(sleep_between_requests_range) == 2) else 10
-            sleep_max = sleep_between_requests_range[1] if (isinstance(sleep_between_requests_range, (list, tuple)) and len(sleep_between_requests_range) == 2) else 50
+            if isinstance(sleep_between_requests_range, (list, tuple)) and len(sleep_between_requests_range) == 2:
+                sleep_min = sleep_between_requests_range[0]
+                sleep_max = sleep_between_requests_range[1]
+            else:
+                sleep_min = 10
+                sleep_max = 50
             sleep_duration = random.uniform(sleep_min, sleep_max)
             print(f"[{account_index}/{total_accounts}] Спим {sleep_duration:.2f} секунд перед следующим запросом аккаунта.")
             await asyncio.sleep(sleep_duration)
+
+
+# Обертка для запуска worker с задержкой delay_seconds
+async def delayed_worker_start(delay_seconds, *worker_args, **worker_kwargs):
+    if delay_seconds > 0:
+        await asyncio.sleep(delay_seconds)
+    await worker(*worker_args, **worker_kwargs)
 
 
 async def main_async():
@@ -148,8 +159,11 @@ async def main_async():
         print("Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. Завершаем работу.")
         sys.exit(1)
 
+    total_keys = len(keys)
+
+    indices = list(range(total_keys))
     if shuffle_wallet:
-        random.shuffle(keys)
+        random.shuffle(indices)
 
     try:
         with open('default_prompts_to_nous.txt', 'r', encoding='utf-8') as f:
@@ -158,37 +172,41 @@ async def main_async():
         print(f"Ошибка при загрузке файлов с промптами: {e}")
         sys.exit(1)
 
-    total_keys = len(keys)
-
     for start_idx in range(0, total_keys, wallets_in_work):
         end_idx = min(start_idx + wallets_in_work, total_keys)
-        batch = keys[start_idx:end_idx]
+        batch_indices = indices[start_idx:end_idx]
 
-        tasks = []
-        for i, key in enumerate(batch, start=start_idx + 1):
+        running_tasks = []
+        for pos_in_batch, original_idx in enumerate(batch_indices):
+            key = keys[original_idx]
+            real_index = original_idx + 1  # 1-based индексы
+
             if use_different_ai == 0:
                 prompt = random.choice(prompts)
             else:
                 prompt = None
 
-            proxy_for_account = proxies[i - 1] if useProxy and len(proxies) >= i else None
+            proxy_for_account = proxies[real_index - 1] if useProxy and len(proxies) >= real_index else None
 
-            tasks.append(worker(
-                key, prompt, i, total_keys,
+            delay = pos_in_batch * sleep_between_work
+
+            if delay == 0:
+                print(f"[{real_index}/{total_keys}] Запускаем аккаунт №{real_index} (key start: {str(key)[:6]}) без задержки")
+            else:
+                print(f"[{real_index}/{total_keys}] Спим {delay} сек перед запуском аккаунта №{real_index} (key start: {str(key)[:6]})")
+
+            task = asyncio.create_task(delayed_worker_start(
+                delay,
+                key, prompt, real_index, total_keys,
                 nous_requests_per_account_min,
                 nous_requests_per_account_max,
                 sleep_between_requests,
                 nous_models,
                 proxy_for_account
             ))
+            running_tasks.append(task)
 
-        await asyncio.gather(*tasks)
-
-        for i in range(len(batch) - 1):
-            acc_num = start_idx + i + 1
-            sleep_time = sleep_between_work * i
-            print(f"[{acc_num}/{total_keys}] Спим {sleep_time} сек перед работой аккаунта №{acc_num + 1}")
-            await asyncio.sleep(sleep_time)
+        await asyncio.gather(*running_tasks)
 
     print("\n=== Все задачи в асинхронном режиме выполнены ===\n")
 
@@ -210,7 +228,10 @@ def main_sync():
         sys.exit(1)
 
     if shuffle_wallet:
-        random.shuffle(keys)
+        keys_shuffled = keys[:]
+        random.shuffle(keys_shuffled)
+    else:
+        keys_shuffled = keys
 
     try:
         with open("default_prompts_to_nous.txt", "r", encoding="utf-8") as f:
@@ -219,16 +240,16 @@ def main_sync():
         print(f"Ошибка при загрузке файлов с промптами: {e}")
         sys.exit(1)
 
-    total_keys = len(keys)
+    total_keys = len(keys_shuffled)
 
-    for idx, key in enumerate(keys, start=1):
+    for idx, key in enumerate(keys_shuffled, start=1):
         proxy_for_account = proxies[idx - 1] if useProxy and len(proxies) >= idx else None
 
         if use_different_ai == 0:
             prompt = random.choice(prompts)
             num_requests = random.randint(nous_requests_per_account_min, nous_requests_per_account_max)
             proxy_info = f" с прокси {proxy_for_account}" if proxy_for_account else ""
-            print(f"[INFO] Аккаунт №{idx} будет делать {num_requests} запросов{proxy_info}.")
+            print(f"[INFO] Аккаунт №{idx} (key start: {str(key)[:6]}) будет делать {num_requests} запросов{proxy_info}.")
 
             for req_num in range(1, num_requests + 1):
                 selected_model = random.choice(nous_models)
@@ -242,8 +263,12 @@ def main_sync():
                 print(f"[{idx}/{total_keys}] Ответ: {truncate_text(response)}")
 
                 if req_num < num_requests:
-                    sleep_min = sleep_between_requests[0] if (isinstance(sleep_between_requests, (list, tuple)) and len(sleep_between_requests) == 2) else 10
-                    sleep_max = sleep_between_requests[1] if (isinstance(sleep_between_requests, (list, tuple)) and len(sleep_between_requests) == 2) else 50
+                    if isinstance(sleep_between_requests, (list, tuple)) and len(sleep_between_requests) == 2:
+                        sleep_min = sleep_between_requests[0]
+                        sleep_max = sleep_between_requests[1]
+                    else:
+                        sleep_min = 10
+                        sleep_max = 50
                     sleep_duration = random.uniform(sleep_min, sleep_max)
                     print(f"[{idx}/{total_keys}] Спим {sleep_duration:.2f} секунд перед следующим запросом")
                     time.sleep(sleep_duration)

@@ -29,9 +29,9 @@ DeepHermes-3-Mistral-24B-Preview -- $0.85/1M tokens
 Hermes-3-Llama-3.1-405B -- $1.80/1M tokens
 '''
 # список моделей Nous Research для случайного выбора
+# На момент публикации софта модель "DeepHermes-3-Mistral-24B-Preview" не работает
 nous_models = [
     "Hermes-3-Llama-3.1-70B",
     "Hermes-3-Llama-3.1-405B",
     "DeepHermes-3-Llama-3-8B-Preview",
-    "DeepHermes-3-Mistral-24B-Preview",
 ]
