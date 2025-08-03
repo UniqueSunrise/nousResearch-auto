@@ -47,7 +47,9 @@ def load_api_keys(api_keys_file):
         sys.exit(1)
 
 
-def query_nous_api(api_key: str, prompt: str, model: str, proxy: str = None):
+def query_nous_api(
+        api_key: str, system_prompt: str, user_prompt: str, model: str,
+        proxy: str = None, max_tokens_val: int = max_tokens):
     url = "https://inference-api.nousresearch.com/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -56,10 +58,11 @@ def query_nous_api(api_key: str, prompt: str, model: str, proxy: str = None):
     payload = {
         "model": model,
         "messages": [
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
         ],
+        "max_tokens": max_tokens_val,
         "temperature": 0.7,
-        "max_tokens": max_tokens,
         "stream": False
     }
 
@@ -88,19 +91,31 @@ async def query_perplexity(prompt: str) -> str:
     return "Ответ Perplexity на запрос: " + prompt
 
 
-async def async_query_nous(api_key: str, prompt: str, model: str, proxy: str = None):
+async def async_query_nous(api_key: str, system_prompt: str, user_prompt: str, model: str, proxy: str = None):
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, query_nous_api, api_key, prompt, model, proxy)
+    return await loop.run_in_executor(
+        None,
+        query_nous_api,
+        api_key,
+        system_prompt,
+        user_prompt,
+        model,
+        proxy,
+        max_tokens
+    )
 
 
-async def send_request(account_key, prompt_to_send, account_index, total_accounts, model, proxy=None):
-    print(f"{Fore.GREEN}[{account_index}/{total_accounts}] Активность аккаунта №{account_index} — выполняется запрос к модели {Fore.CYAN}{model}{Style.RESET_ALL}.")
+async def send_request(account_key, system_prompt, prompt_to_send, account_index, total_accounts, model, proxy=None):
+    print(f"{Fore.GREEN}[{account_index}/{total_accounts}] "
+          f"Активность аккаунта №{account_index} — выполняется запрос к модели {Fore.CYAN}{model}{Style.RESET_ALL}.")
     try:
-        response = await async_query_nous(account_key, prompt_to_send, model, proxy)
+        response = await async_query_nous(account_key, system_prompt, prompt_to_send, model, proxy)
     except Exception as e:
         response = f"{Fore.RED}Ошибка при запросе: {e}{Style.RESET_ALL}"
-    print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Промпт: {Fore.MAGENTA}{truncate_text(prompt_to_send)}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Ответ: {Fore.LIGHTWHITE_EX}{truncate_text(response)}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Промпт: "
+          f"{Fore.MAGENTA}{truncate_text(prompt_to_send)}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Ответ: "
+          f"{Fore.LIGHTWHITE_EX}{truncate_text(response)}{Style.RESET_ALL}")
 
 
 async def worker(account_key, prompts_list, account_index, total_accounts,
@@ -108,7 +123,9 @@ async def worker(account_key, prompts_list, account_index, total_accounts,
                  models_list, proxy=None):
     num_requests = random.randint(nous_min_requests, nous_max_requests)
     proxy_info = f" с прокси {Fore.BLUE}{proxy}{Style.RESET_ALL}" if proxy else ""
-    print(f"{Fore.BLUE}[INFO]{Style.RESET_ALL} Аккаунт №{account_index} (key start: {Fore.LIGHTYELLOW_EX}{str(account_key)[:6]}{Style.RESET_ALL}) будет делать {Fore.LIGHTCYAN_EX}{num_requests}{Style.RESET_ALL} запросов{proxy_info}.")
+    print(f"{Fore.BLUE}[INFO]{Style.RESET_ALL} Аккаунт №{account_index} (key start: "
+          f"{Fore.LIGHTYELLOW_EX}{str(account_key)[:6]}{Style.RESET_ALL}) будет делать "
+          f"{Fore.LIGHTCYAN_EX}{num_requests}{Style.RESET_ALL} запросов{proxy_info}.")
 
     for req_num in range(1, num_requests + 1):
         selected_model = random.choice(models_list)
@@ -124,8 +141,9 @@ async def worker(account_key, prompts_list, account_index, total_accounts,
         else:
             prompt_to_nous = random.choice(prompts_list)
 
-        print(f"{Fore.GREEN}[{account_index}/{total_accounts}]{Style.RESET_ALL} Аккаунт №{account_index} — Запрос {Fore.CYAN}{req_num}/{num_requests}{Style.RESET_ALL} (запрос к {Fore.LIGHTCYAN_EX}{selected_model}{Style.RESET_ALL})")
-        await send_request(account_key, prompt_to_nous, account_index, total_accounts, selected_model, proxy)
+        print(f"{Fore.GREEN}[{account_index}/{total_accounts}]{Style.RESET_ALL} Аккаунт №{account_index} — Запрос "
+              f"{Fore.CYAN}{req_num}/{num_requests}{Style.RESET_ALL} (запрос к {Fore.LIGHTCYAN_EX}{selected_model}{Style.RESET_ALL})")
+        await send_request(account_key, SYSTEM_PROMPT, prompt_to_nous, account_index, total_accounts, selected_model, proxy)
 
         if req_num < num_requests:
             if isinstance(sleep_between_requests_range, (list, tuple)) and len(sleep_between_requests_range) == 2:
@@ -136,7 +154,8 @@ async def worker(account_key, prompts_list, account_index, total_accounts,
                 sleep_max = 50
 
             sleep_duration = random.uniform(sleep_min, sleep_max)
-            print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Спим {Fore.LIGHTCYAN_EX}{sleep_duration:.2f}{Style.RESET_ALL} секунд перед следующим запросом аккаунта.")
+            print(f"{Fore.YELLOW}[{account_index}/{total_accounts}]{Style.RESET_ALL} Спим "
+                  f"{Fore.LIGHTCYAN_EX}{sleep_duration:.2f}{Style.RESET_ALL} секунд перед следующим запросом аккаунта.")
             await asyncio.sleep(sleep_duration)
 
 
@@ -151,7 +170,8 @@ async def main_async():
         try:
             proxies = load_proxies(PROXY_FILE_PATH)
         except FileNotFoundError:
-            print(f"{Fore.RED}Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
+            print(f"{Fore.RED}Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' "
+                  f"не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
             sys.exit(1)
     else:
         proxies = []
@@ -159,7 +179,8 @@ async def main_async():
     try:
         keys = load_api_keys("api_keys.txt")
     except FileNotFoundError:
-        print(f"{Fore.RED}Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
+        print(f"{Fore.RED}Ошибка: Файл с API ключами 'api_keys.txt' не найден или пустой. "
+              f"Завершаем работу.{Style.RESET_ALL}")
         sys.exit(1)
 
     total_keys = len(keys)
@@ -189,9 +210,12 @@ async def main_async():
             delay = pos_in_batch * sleep_between_work
 
             if delay == 0:
-                print(f"{Fore.YELLOW}[{real_index}/{total_keys}] Запускаем аккаунт №{real_index} (key start: {Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL}) без задержки")
+                print(f"{Fore.YELLOW}[{real_index}/{total_keys}] Запускаем аккаунт №{real_index} "
+                      f"(key start: {Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL}) без задержки")
             else:
-                print(f"{Fore.YELLOW}[{real_index}/{total_keys}] Спим {Fore.LIGHTCYAN_EX}{delay}{Style.RESET_ALL} сек перед запуском аккаунта №{real_index} (key start: {Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL})")
+                print(f"{Fore.YELLOW}[{real_index}/{total_keys}] Спим {Fore.LIGHTCYAN_EX}{delay}{Style.RESET_ALL} "
+                      f"сек перед запуском аккаунта №{real_index} "
+                      f"(key start: {Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL})")
 
             task = asyncio.create_task(delayed_worker_start(
                 delay,
@@ -214,7 +238,8 @@ def main_sync():
         try:
             proxies = load_proxies(PROXY_FILE_PATH)
         except FileNotFoundError:
-            print(f"{Fore.RED}Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
+            print(f"{Fore.RED}Ошибка: Режим useProxy=True, но файл прокси '{PROXY_FILE_PATH}' "
+                  f"не найден или пустой. Завершаем работу.{Style.RESET_ALL}")
             sys.exit(1)
     else:
         proxies = []
@@ -247,18 +272,27 @@ def main_sync():
             prompt = random.choice(prompts)
             num_requests = random.randint(nous_requests_per_account_min, nous_requests_per_account_max)
             proxy_info = f" с прокси {proxy_for_account}" if proxy_for_account else ""
-            print(f"{Fore.BLUE}[INFO]{Style.RESET_ALL} Аккаунт №{idx} (key start: {Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL}) будет делать {Fore.LIGHTCYAN_EX}{num_requests}{Style.RESET_ALL} запросов{proxy_info}.")
+            print(f"{Fore.BLUE}[INFO]{Style.RESET_ALL} Аккаунт №{idx} (key start: "
+                  f"{Fore.LIGHTYELLOW_EX}{str(key)[:6]}{Style.RESET_ALL}) будет делать "
+                  f"{Fore.LIGHTCYAN_EX}{num_requests}{Style.RESET_ALL} запросов{proxy_info}.")
 
             for req_num in range(1, num_requests + 1):
                 selected_model = random.choice(nous_models)
-                print(f"{Fore.GREEN}[{idx}/{total_keys}]{Style.RESET_ALL} Аккаунт №{idx} — Запрос {Fore.CYAN}{req_num}/{num_requests}{Style.RESET_ALL} (запрос к {Fore.LIGHTCYAN_EX}{selected_model}{Style.RESET_ALL})")
+                print(f"{Fore.GREEN}[{idx}/{total_keys}]{Style.RESET_ALL} Аккаунт №{idx} — Запрос "
+                      f"{Fore.CYAN}{req_num}/{num_requests}{Style.RESET_ALL} (запрос к "
+                      f"{Fore.LIGHTCYAN_EX}{selected_model}{Style.RESET_ALL})")
                 try:
-                    response = query_nous_api(key, prompt, selected_model, proxy=proxy_for_account)
+                    response = query_nous_api(
+                        key, SYSTEM_PROMPT, prompt, selected_model,
+                        proxy=proxy_for_account, max_tokens_val=max_tokens
+                    )
                 except Exception as e:
                     response = f"{Fore.RED}Ошибка: {e}{Style.RESET_ALL}"
 
-                print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Промпт: {Fore.MAGENTA}{truncate_text(prompt)}{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Ответ: {Fore.LIGHTWHITE_EX}{truncate_text(response)}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Промпт: "
+                      f"{Fore.MAGENTA}{truncate_text(prompt)}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Ответ: "
+                      f"{Fore.LIGHTWHITE_EX}{truncate_text(response)}{Style.RESET_ALL}")
 
                 if req_num < num_requests:
                     if isinstance(sleep_between_requests, (list, tuple)) and len(sleep_between_requests) == 2:
@@ -268,10 +302,12 @@ def main_sync():
                         sleep_min = 10
                         sleep_max = 50
                     sleep_duration = random.uniform(sleep_min, sleep_max)
-                    print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Спим {Fore.LIGHTCYAN_EX}{sleep_duration:.2f}{Style.RESET_ALL} секунд перед следующим запросом")
+                    print(f"{Fore.YELLOW}[{idx}/{total_keys}]{Style.RESET_ALL} Спим "
+                          f"{Fore.LIGHTCYAN_EX}{sleep_duration:.2f}{Style.RESET_ALL} секунд перед следующим запросом")
                     time.sleep(sleep_duration)
         else:
-            print(f"{Fore.RED}Синхронный режим не поддерживает use_different_ai != 0. use_different_ai={use_different_ai}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Синхронный режим не поддерживает use_different_ai != 0. "
+                  f"use_different_ai={use_different_ai}{Style.RESET_ALL}")
             break
 
         sleep_time = sleep_between_work * ((idx - 1) % wallets_in_work)
