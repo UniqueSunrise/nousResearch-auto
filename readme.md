@@ -1,6 +1,6 @@
 # Nous Research Automation Software
 
-![Nous](./img/nous.png)
+![Nous](./img/nous_auto.jpg)
 
 ## О проекте Nous Research
 
