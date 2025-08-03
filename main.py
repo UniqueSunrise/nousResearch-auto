@@ -100,7 +100,7 @@ async def send_request(account_key, prompt_to_send, account_index, total_account
     print(f"[{account_index}/{total_accounts}] Ответ: {truncate_text(response)}")
 
 
-async def worker(account_key, prompt, account_index, total_accounts,
+async def worker(account_key, prompts_list, account_index, total_accounts,
                  nous_min_requests, nous_max_requests, sleep_between_requests_range,
                  models_list, proxy=None):
     num_requests = random.randint(nous_min_requests, nous_max_requests)
@@ -119,7 +119,7 @@ async def worker(account_key, prompt, account_index, total_accounts,
             ai_response = await query_gpt(ai_prompt)
             prompt_to_nous = ai_response
         else:
-            prompt_to_nous = prompt
+            prompt_to_nous = random.choice(prompts_list)  # каждый запрос с новым случайным промптом
 
         print(f"[{account_index}/{total_accounts}] Аккаунт №{account_index} — Запрос {req_num}/{num_requests} (запрос к {selected_model})")
         await send_request(account_key, prompt_to_nous, account_index, total_accounts, selected_model, proxy)
@@ -136,7 +136,6 @@ async def worker(account_key, prompt, account_index, total_accounts,
             await asyncio.sleep(sleep_duration)
 
 
-# Обертка для запуска worker с задержкой delay_seconds
 async def delayed_worker_start(delay_seconds, *worker_args, **worker_kwargs):
     if delay_seconds > 0:
         await asyncio.sleep(delay_seconds)
@@ -179,12 +178,12 @@ async def main_async():
         running_tasks = []
         for pos_in_batch, original_idx in enumerate(batch_indices):
             key = keys[original_idx]
-            real_index = original_idx + 1  # 1-based индексы
+            real_index = original_idx + 1  # 1-based индекс аккаунта
 
             if use_different_ai == 0:
-                prompt = random.choice(prompts)
+                prompt_list_for_worker = prompts
             else:
-                prompt = None
+                prompt_list_for_worker = None
 
             proxy_for_account = proxies[real_index - 1] if useProxy and len(proxies) >= real_index else None
 
@@ -197,7 +196,7 @@ async def main_async():
 
             task = asyncio.create_task(delayed_worker_start(
                 delay,
-                key, prompt, real_index, total_keys,
+                key, prompt_list_for_worker, real_index, total_keys,
                 nous_requests_per_account_min,
                 nous_requests_per_account_max,
                 sleep_between_requests,
